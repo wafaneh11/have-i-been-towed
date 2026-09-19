@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Have I Been Towed?</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e1e1e;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 80px;
+    }
+    h1 { margin-bottom: 30px; }
+    input {
+      padding: 10px;
+      font-size: 16px;
+      width: 250px;
+      border-radius: 6px;
+      border: none;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-left: 10px;
+      border-radius: 6px;
+      border: none;
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 30px;
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+      min-height: 40px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Have I Been Towed?</h1>
+
+  <div>
+    <input type="text" id="plateInput" placeholder="Enter plate number">
+    <button onclick="searchPlate()">Search</button>
+  </div>
+
+  <div id="result">Enter a plate above to search.</div>
+
+  <script>
+    async function searchPlate() {
+      const plate = document.getElementById('plateInput').value.trim();
+      const resultDiv = document.getElementById('result');
+
+      if (!plate) {
+        resultDiv.textContent = "Please enter a plate number.";
+        return;
+      }
+
+      resultDiv.textContent = "Searching...";
+
+      try {
+        const response = await fetch(`http://127.0.0.1:8000/tows/${plate}`);
+
+        if (response.status === 404) {
+          resultDiv.textContent = "No tow record found for that plate.";
+          return;
+        }
+
+        if (!response.ok) {
+          resultDiv.textContent = "Something went wrong. Try again.";
+          return;
+        }
+
+        const data = await response.json();
+
+        resultDiv.innerHTML = `
+          <strong>Plate:</strong> ${data.plate}<br>
+          <strong>Status:</strong> ${data.status}<br>
+          <strong>Location:</strong> ${data.destination}<br>
+          <strong>Truck:</strong> ${data.truck_id}<br>
+          <strong>Detected:</strong> ${data.detected_at}<br>
+          <strong>Confidence:</strong> ${(data.confidence * 100).toFixed(1)}%
+        `;
+      } catch (err) {
+        resultDiv.textContent = "Could not reach the server. Is the backend running?";
+      }
+    }
+  </script>
+
+</body>
+</html>
