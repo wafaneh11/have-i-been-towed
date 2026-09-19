@@ -13,3 +13,7 @@ starlette==1.6.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.53.0
+fast-alpr[onnx]
+opencv-python
+numpy
+python-multipart
