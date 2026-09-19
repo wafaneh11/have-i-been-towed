@@ -1,11 +1,12 @@
 import re
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from sqlmodel import Field, Session, SQLModel, create_engine, select
 from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+
 
 # Clean a plate and reject invalid characters.
 def normalize_plate(plate: str) -> str:
@@ -32,7 +33,7 @@ class Tow(SQLModel, table=True):
     image_url: str | None = None
 
 
-# Input form: the information needed to create a tow.
+# Input form: the full information needed to create a tow.
 class TowCreate(SQLModel):
     plate: str = Field(min_length=1, max_length=20)
     detected_at: datetime
@@ -41,6 +42,11 @@ class TowCreate(SQLModel):
     status: str = Field(default="towed", min_length=1, max_length=30)
     confidence: float = Field(ge=0, le=1)
     image_url: str | None = None
+
+
+# Input form for the CV pipeline, which only knows the plate itself.
+class PlateOnly(SQLModel):
+    plate: str = Field(min_length=1, max_length=20)
 
 
 # Keep the database beside this Python file.
@@ -60,6 +66,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TowTrace AI", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -67,14 +74,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def home():
     return {"message": "TowTrace backend is running!"}
 
 
-# Clean the plate and check for a duplicate before saving.
-@app.post("/tows", response_model=Tow, status_code=201)
-def create_tow(tow_data: TowCreate):
+def _save_tow(tow_data: TowCreate) -> Tow:
+    """Shared save logic used by both /tows and /plate."""
     tow_data.plate = normalize_plate(tow_data.plate)
 
     with Session(engine) as session:
@@ -97,6 +104,29 @@ def create_tow(tow_data: TowCreate):
         session.commit()
         session.refresh(tow)
         return tow
+
+
+# Clean the plate and check for a duplicate before saving.
+@app.post("/tows", response_model=Tow, status_code=201)
+def create_tow(tow_data: TowCreate):
+    return _save_tow(tow_data)
+
+
+# Adapter route for the CV pipeline, which only sends {"plate": "..."}.
+# Fills in the fields the camera can't know (truck, destination, status)
+# with defaults, and confidence with a placeholder since the script
+# doesn't currently send it either.
+@app.post("/plate", response_model=Tow, status_code=201)
+def create_tow_from_plate(data: PlateOnly):
+    tow_data = TowCreate(
+        plate=data.plate,
+        detected_at=datetime.now(timezone.utc),
+        truck_id="TRUCK-01",
+        destination="Pending Assignment",
+        status="towed",
+        confidence=1.0,
+    )
+    return _save_tow(tow_data)
 
 
 # Return the 50 most recent tow records.
